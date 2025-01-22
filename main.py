@@ -93,7 +93,7 @@ def get_local_data():
                 ms_number = f"{journal}-D-{match.group(2)}{match.group(3)}"  # EUONCO-D-24-00622R2
                 version = match.group(3)  # R2
                 editor = match.group(4)   # Assel
-                year = match.group(5)     # 2024
+                year = int(match.group(5))     # 2024
             
                 file_info = {
                     'Name': file_name,
@@ -115,16 +115,19 @@ def merge_data():
     updated_file = pd.read_csv("file_list.csv")
 
     merged_df = pd.merge(updated_file, reviewer_metrics_2024, on=['Name','MS Number','Version','Year','Editor','Journal'], how='outer')
+    merged_df = merged_df.dropna(subset=['Year'])
+    merged_df['Year'] = merged_df['Year'].astype(int)
     # Save the merged dataframe to CSV
     current_date = datetime.now().strftime('%Y-%m-%d')
     filename = f"merged_{current_date}.csv"
-    merged_df.to_csv(filename, index=False)
+    df_sorted = merged_df.sort_values(by='Year', ascending=False)
+    df_sorted.to_csv(filename, index=False)
     print("File saved")
 
 
 def main():
-    format_gmail_data()
-    #get_local_data()
-    #merge_data()
+    #format_gmail_data()
+    get_local_data()
+    merge_data()
 
 main()
