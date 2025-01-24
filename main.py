@@ -9,7 +9,7 @@ def get_local_data():
     pattern = r'([A-Za-z]+)-D-(\d{2}-\d{5})(R\d+)\s\((.*?)\)\s(\d{4})-(\d{2})-(\d{2})\.pdf'    
     files = os.listdir(folder_path)
     file_data = []
-    existing_df = pd.read_csv('merged_2025-01-22.csv')
+    existing_df = pd.read_csv('raw_data.csv')
     existing_ms_numbers = existing_df['MS Number'].tolist()  # Extract existing MS Numbers to avoid duplicates
     # Loop through the files and check for new rows
     for file_name in files:
@@ -40,7 +40,7 @@ def get_local_data():
         new_df = new_df.sort_values(by='Year', ascending=False)
         combined_df = pd.concat([new_df, existing_df], ignore_index=True)
         # Write the combined DataFrame back to the CSV (overwrite entire file)
-        combined_df.to_csv('merged_2025-01-22.csv', index=False)
+        combined_df.to_csv('reviewer_metrics.csv', index=False)
 
         # Append the new rows to the CSV, ensuring columns are consistent
         #new_df.to_csv('merged_2025-01-22.csv', mode='a', header=not os.path.exists('merged_2025-01-22.csv'), index=False)
