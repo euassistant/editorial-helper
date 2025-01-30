@@ -9,7 +9,7 @@ def get_local_data():
     pattern = r'([A-Za-z]+)-D-(\d{2}-\d{5})(R\d+)\s\((.*?)\)\s(\d{4})-(\d{2})-(\d{2})\.pdf'    
     files = os.listdir(folder_path)
     file_data = []
-    existing_df = pd.read_csv('raw_data.csv')
+    existing_df = pd.read_csv('reviewer_metrics.csv')
     existing_ms_numbers = existing_df['MS Number'].tolist()  # Extract existing MS Numbers to avoid duplicates
     # Loop through the files and check for new rows
     for file_name in files:
