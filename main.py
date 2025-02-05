@@ -21,7 +21,7 @@ def get_local_data():
                 ms_number = f"{journal}-D-{match.group(2)}{match.group(3)}"  # EUONCO-D-24-00622R2
                 version = match.group(3)  # R2
                 editor = match.group(4)   # Assel
-                year = int(match.group(5))     # 2024
+                year = int(match.group(5)) # 2024
                 file_info = {
                     'Name': file_name,
                     'MS Number': ms_number,
