@@ -48,6 +48,11 @@ def get_local_data():
     else:
         print("No new rows to append.")
 
+    return combined_df
+
+def save_to_db():
+    print()
+
 def main():
     get_local_data()
 

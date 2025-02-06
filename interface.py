@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from main import get_local_data
 
 
 # Page setup
@@ -8,11 +9,13 @@ st.set_page_config(page_title="Editorial Helper", page_icon="📝", layout="wide
 st.title("Editorial Helper")
 tab1, tab2, tab3 = st.tabs(["Search", "Edit Data", "Analytics"])
 
+
 # Use a text_input to get the keywords to filter the dataframe
 with tab1:
     st.header("Search")
     text_search = st.text_input("Search by Manuscript Name, MS Number, or Editor", value="")
-    csvfn = 'reviewer_metrics.csv'
+
+    csvfn = get_local_data()
 
     def update(edf):
         edf.to_csv(csvfn, index=False)
