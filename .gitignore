@@ -4,5 +4,4 @@ utilities/
 reviewer-analysis/
 submissions/
 *.csv
-__pycache__/
-reviewer_metrics.csv
+/pycache/* 
