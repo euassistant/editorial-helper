@@ -1,4 +1,7 @@
 associate-editor/
 secure_data/
 utils/
-analysis/
+reviewer-analysis/
+submissions/
+*.csv
+__pycache__
