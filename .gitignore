@@ -1,6 +1,6 @@
 associate-editor/
 secure_data/
-utils/
+utilities/
 reviewer-analysis/
 submissions/
 *.csv
