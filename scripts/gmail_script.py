@@ -43,7 +43,7 @@ def get_sent():
     # Get Sent Emails
     sent_query_messages = {
         #"after": '2024/12/10',
-        "sender": ['eumskcc@gmail.com']
+        "sender": ['']
     }
     sent_messages = gmail.get_messages(query=construct_query(sent_query_messages))
     sent_dict = []
