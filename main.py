@@ -1,59 +1,77 @@
 import re
 import os
 import pandas as pd
+import duckdb
 from datetime import datetime
 
-
 def get_local_data():
-    folder_path = '../Dealt With/'
-    pattern = r'([A-Za-z]+)-D-(\d{2}-\d{5})(R\d+)\s\((.*?)\)\s(\d{4})-(\d{2})-(\d{2})\.pdf'    
-    files = os.listdir(folder_path)
-    file_data = []
+    con = duckdb.connect('reviews.duckdb')
+    # Query the reviews table
+    try:
+        df = con.execute("SELECT * FROM reviews").fetchdf()
+        print("Data fetched successfully from DuckDB.")
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        df = pd.DataFrame()  # Return an empty DataFrame in case of error
+
+    # Close the connection
+    con.close()
+
+    return df
+
+
+def check_for_new_data():
+    # Get the existing data
+    df = get_local_data()
+    
+    # Initialize new_man as an empty DataFrame with the same columns as df
+    new_man = pd.DataFrame(columns=df.columns)
+    
+    # Extract existing MS Numbers to avoid duplicates
     existing_df = pd.read_csv('reviewer_metrics.csv')
-    existing_ms_numbers = existing_df['MS Number'].tolist()  # Extract existing MS Numbers to avoid duplicates
-    # Loop through the files and check for new rows
-    for file_name in files:
-        file_path = os.path.join(folder_path, file_name)
-        if os.path.isfile(file_path):  # Check if it's a file, not a directory
-            match = re.search(pattern, file_name)
-            if match:
-                journal = match.group(1)  # EUONCO
-                ms_number = f"{journal}-D-{match.group(2)}{match.group(3)}"  # EUONCO-D-24-00622R2
-                version = match.group(3)  # R2
-                editor = match.group(4)   # Assel
-                year = int(match.group(5)) # 2024
-                file_info = {
-                    'Name': file_name,
-                    'MS Number': ms_number,
-                    'Version': version,
-                    'Year': year,
-                    'Editor': editor,
-                    'Journal': journal
-                }
-                if ms_number not in existing_ms_numbers:
-                    file_data.append(file_info)
-    # If there is any new data, create a DataFrame and append it to the CSV
-    if file_data:
-        new_df = pd.DataFrame(file_data)
+
+    existing_ms_numbers = existing_df['MS Number'].tolist()
+    
+    # Iterate over the DataFrame rows
+    for index, row in df.iterrows():
+        ms_number = row['MS_Number']
+        
+        # Check if the ms_number is not in the existing MS numbers
+        if ms_number not in existing_ms_numbers:
+            # Append the row to new_man DataFrame
+            new_man = new_man.append(row, ignore_index=True)
+            print(f"MS Number {ms_number} is new and added to new_man.")
+    
+    return new_man
+
+
+def format_data():
+    df = check_for_new_data()
+
+
+    if not df.empty:
+        new_df = pd.DataFrame(df)
         new_df['Date Invited'] = None
         new_df['Date Completed'] = None
         new_df = new_df.sort_values(by='Year', ascending=False)
+        existing_df = pd.read_csv('reviewer_metrics.csv')
         combined_df = pd.concat([new_df, existing_df], ignore_index=True)
         # Write the combined DataFrame back to the CSV (overwrite entire file)
         combined_df.to_csv('reviewer_metrics.csv', index=False)
 
-        # Append the new rows to the CSV, ensuring columns are consistent
-        #new_df.to_csv('merged_2025-01-22.csv', mode='a', header=not os.path.exists('merged_2025-01-22.csv'), index=False)
+     # Append the new rows to the CSV, ensuring columns are consistent
         print(f"Appended {len(new_df)} new rows")
+        return combined_df
     else:
         print("No new rows to append.")
-
-    return combined_df
-
-def save_to_db():
-    print()
+        return None
+    
 
 def main():
-    get_local_data()
+    combined_df = format_data()
+    if combined_df is not None:
+        print("Data successfully combined and saved.")
+    else:
+        print("No changes made to the data.")
 
 main()

@@ -13,16 +13,23 @@ tab1, tab2, tab3 = st.tabs(["Search", "Edit Data", "Analytics"])
 # Use a text_input to get the keywords to filter the dataframe
 with tab1:
     st.header("Search")
+    
+    # Add a refresh button
+    if st.button('🔄 Refresh Data'):
+        st.cache_data.clear()
+        st.rerun()
+        
     text_search = st.text_input("Search by Manuscript Name, MS Number, or Editor", value="")
 
     csvfn = get_local_data()
 
     def update(edf):
         edf.to_csv(csvfn, index=False)
-        load_df.clear()
+        st.cache_data.clear()  # Clear the cache when data is updated
+        st.rerun()  # Rerun the app to show new data
     
 
-    @st.cache_data(ttl='1d')
+    @st.cache_data(ttl=60)  # Cache for 60 seconds only
     def load_df():
         return pd.read_csv(csvfn)
 
