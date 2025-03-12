@@ -21,35 +21,63 @@ with tab1:
         
     text_search = st.text_input("Search by Manuscript Name, MS Number, or Editor", value="")
 
-    csvfn = format_data()
-
-    def update(edf):
-        edf.to_csv(csvfn, index=False)
-        st.cache_data.clear()  # Clear the cache when data is updated
-        st.rerun()  # Rerun the app to show new data
-    
-
     @st.cache_data(ttl=60)  # Cache for 60 seconds only
     def load_df():
-        return pd.read_csv(csvfn)
-
+        try:
+            # Read the CSV and convert Year column to integer
+            df = pd.read_csv('reviewer_metrics.csv')
+            df['Year'] = df['Year'].astype(int)  # Convert Year to integer
+            return df
+        except FileNotFoundError:
+            st.error("reviewer_metrics.csv not found. Creating new data...")
+            combined_df = format_data()
+            if combined_df is not None:
+                combined_df['Year'] = combined_df['Year'].astype(int)  # Convert Year to integer
+                return combined_df
+            return pd.DataFrame()  # Return empty DataFrame if no data
 
     df = load_df()
-    m1 = df["MS Number"].str.contains(text_search)
-    m2 = df["Name"].str.contains(text_search)
-    m3 = df["Editor"].str.contains(text_search)
-    df_search = df[m1 | m2 | m3]
-    # Show the results, if you have a text_search
-    st.text("Search Results")
+    
     if text_search:
+        m1 = df["MS Number"].str.contains(text_search, case=False, na=False)
+        m2 = df["Name"].str.contains(text_search, case=False, na=False)
+        m3 = df["Editor"].str.contains(text_search, case=False, na=False)
+        df_search = df[m1 | m2 | m3]
+        st.text("Search Results")
         st.write(df_search)
+    else:
+        st.text("All Records")
+        column_config = {
+        "Year": st.column_config.NumberColumn(
+            "Year",
+            min_value=2000,
+            max_value=2100,
+            step=1,
+            format="%d"  # This ensures no decimal places
+            )
+        }
+        st.dataframe(df, column_config=column_config)
 
 
 
 with tab2:
     st.header("Edit Data")
-    edf = st.data_editor(df)
-    st.button('Save', on_click=update, args=(edf, ))
+    # Specify the column config to treat Year as integer
+    column_config = {
+        "Year": st.column_config.NumberColumn(
+            "Year",
+            min_value=2000,
+            max_value=2100,
+            step=1,
+            format="%d"  # This ensures no decimal places
+        )
+    }
+    edf = st.data_editor(df, column_config=column_config)
+    if st.button('Save'):
+        edf['Year'] = edf['Year'].astype(int)  # Ensure Year is integer before saving
+        edf.to_csv('reviewer_metrics.csv', index=False)
+        st.cache_data.clear()
+        st.rerun()
 
 
 with tab3:
