@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from main import get_local_data
+from main import format_data
 
 
 # Page setup
@@ -21,7 +21,7 @@ with tab1:
         
     text_search = st.text_input("Search by Manuscript Name, MS Number, or Editor", value="")
 
-    csvfn = get_local_data()
+    csvfn = format_data()
 
     def update(edf):
         edf.to_csv(csvfn, index=False)
