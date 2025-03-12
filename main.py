@@ -17,6 +17,12 @@ def get_local_data():
     con.close()
     return df
 
+def get_existing_data():
+    with duckdb.connect('metrics.duckdb',read_only=True) as con:
+        existing_df = con.execute("SELECT * FROM reviewer_metrics.csv").fetchdf()
+    return existing_df
+
+
 def check_for_new_data():
     # Get the existing data
     df = get_local_data()
@@ -26,7 +32,7 @@ def check_for_new_data():
     new_man = pd.DataFrame(columns=df.columns)
     
     # Extract existing MS Numbers to avoid duplicates
-    existing_df = pd.read_csv('reviewer_metrics.csv')
+    existing_df = get_existing_data()
     existing_ms_numbers = existing_df['MS Number'].tolist()
     
     # Iterate over the DataFrame rows
@@ -43,13 +49,13 @@ def check_for_new_data():
 
 def format_data():
     df = check_for_new_data()
-    existing_df = pd.read_csv('reviewer_metrics.csv')
+    existing_df = get_existing_data()
     if not df.empty:
         new_df = pd.DataFrame(df)
         new_df['Date Invited'] = None
         new_df['Date Completed'] = None
         new_df = new_df.sort_values(by='Year', ascending=False)
-        existing_df = pd.read_csv('reviewer_metrics.csv')
+        existing_df = get_existing_data()
         combined_df = pd.concat([new_df, existing_df], ignore_index=True)
         # Remove MS_Number column
         combined_df = combined_df.drop(columns=['MS_Number'])

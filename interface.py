@@ -25,7 +25,7 @@ with tab1:
     def load_df():
         try:
             # Read the CSV and convert Year column to integer
-            df = pd.read_csv('reviewer_metrics.csv')
+            df = format_data()
             df['Year'] = df['Year'].astype(int)  # Convert Year to integer
             return df
         except FileNotFoundError:
