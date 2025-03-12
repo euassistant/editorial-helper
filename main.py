@@ -4,76 +4,133 @@ import pandas as pd
 import duckdb
 from datetime import datetime
 
-def get_local_data():
-    con = duckdb.connect('reviews.duckdb',read_only=True)
-    # Query the reviews table
-    try:
-        df = con.execute("SELECT * FROM reviews").fetchdf()
-        print("Data fetched successfully from DuckDB.")
-    except Exception as e:
-        print(f"Error fetching data: {e}")
-        df = pd.DataFrame()  # Return an empty DataFrame in case of error
-    # Close the connection
+
+def initialize_metrics_db():
+    # Load the CSV file and ensure date columns are parsed correctly
+    df = pd.read_csv('merged_file.csv', parse_dates=['Date Invited', 'Date Completed'])
+
+    # Debugging: Print the first few rows to verify the data
+    print("CSV Data Sample:")
+    print(df.head())
+
+    # Connect to DuckDB
+    con = duckdb.connect('metrics.duckdb')
+
+    # Drop the existing table if it exists
+    con.execute("DROP TABLE IF EXISTS reviewer_metrics")
+
+    # Create the table with the correct schema
+    con.execute("""
+    CREATE TABLE reviewer_metrics (
+        Name STRING,
+        "MS Number" STRING,
+        Version STRING,
+        Year INTEGER,
+        Editor STRING,
+        Journal STRING,
+        "Date Invited" DATE,
+        "Date Completed" STRING
+    )
+    """)
+
+    # Insert data into the table
+    con.execute("INSERT INTO reviewer_metrics SELECT * FROM df")
+
     con.close()
+    print("Data imported successfully into DuckDB.")
+
+def fetch_data():
+    # Connect to DuckDB and fetch data
+    con = duckdb.connect('metrics.duckdb')
+    df = con.execute("SELECT * FROM reviewer_metrics").fetchdf()
+    con.close()
+
+    # Debugging: Print the first few rows to verify the data
+    print("Fetched Data Sample:")
+    print(df.head())
+
     return df
 
-def get_existing_data():
-    with duckdb.connect('metrics.duckdb',read_only=True) as con:
-        existing_df = con.execute("SELECT * FROM reviewer_metrics.csv").fetchdf()
-    return existing_df
 
+
+def get_local_data():
+    """Get data from reviews database"""
+    try:
+        with duckdb.connect('reviews.duckdb', read_only=True) as con:
+            df = con.execute("SELECT * FROM reviews").fetchdf()
+            print("Data fetched successfully from reviews database.")
+            return df
+    except Exception as e:
+        print(f"Error fetching from reviews database: {e}")
+        return pd.DataFrame()
 
 def check_for_new_data():
-    # Get the existing data
-    df = get_local_data()
-    # Rename the column from 'MS_Number' to 'MS Number'
-    df = df.rename(columns={'MS_Number': 'MS Number'})
-    # Initialize new_man as an empty DataFrame with the same columns as df
-    new_man = pd.DataFrame(columns=df.columns)
+    # Get both sets of data
+    reviews_df = get_local_data()
+    existing_df = fetch_data()
     
-    # Extract existing MS Numbers to avoid duplicates
-    existing_df = get_existing_data()
-    existing_ms_numbers = existing_df['MS Number'].tolist()
+    # Rename the column from 'MS_Number' to 'MS Number' in reviews_df
+    reviews_df = reviews_df.rename(columns={'MS_Number': 'MS Number'})
     
-    # Iterate over the DataFrame rows
-    for index, row in df.iterrows():
+    # Initialize new_man as an empty DataFrame with the same columns as reviews_df
+    new_man = pd.DataFrame(columns=reviews_df.columns)
+    
+    # Get list of existing MS Numbers
+    existing_ms_numbers = existing_df['MS Number'].tolist() if not existing_df.empty else []
+    
+    # Check for new entries
+    for index, row in reviews_df.iterrows():
         ms_number = row['MS Number']
-        
-        # Check if the ms_number is not in the existing MS numbers
         if ms_number not in existing_ms_numbers:
-            # Append the row to new_man DataFrame using pd.concat
             new_man = pd.concat([new_man, pd.DataFrame([row])], ignore_index=True)
-            #print(f"MS Number {ms_number} is new and added to new_man.")
+           # print(f"MS Number {ms_number} is new and added to new_man.")
     
     return new_man
 
 def format_data():
     df = check_for_new_data()
-    existing_df = get_existing_data()
+
     if not df.empty:
         new_df = pd.DataFrame(df)
-        new_df['Date Invited'] = None
-        new_df['Date Completed'] = None
+        # Convert None to NULL for DuckDB
+        new_df['Date Invited'] = pd.to_datetime(new_df['Date Invited'])
+        new_df['Date Completed'] = pd.to_datetime(new_df['Date Completed'])
         new_df = new_df.sort_values(by='Year', ascending=False)
-        existing_df = get_existing_data()
-        combined_df = pd.concat([new_df, existing_df], ignore_index=True)
-        # Remove MS_Number column
-        combined_df = combined_df.drop(columns=['MS_Number'])
-        # Write the combined DataFrame back to the CSV (overwrite entire file)
-        combined_df.to_csv('reviewer_metrics.csv', index=False)
         
-
-     # Append the new rows to the CSV, ensuring columns are consistent
-        print(f"Appended {len(new_df)} new rows")
-        return combined_df
+        try:
+            # Save to metrics database with conflict handling
+            with duckdb.connect('metrics.duckdb') as con:
+                # Create temporary table for new data
+                con.execute("CREATE TEMP TABLE IF NOT EXISTS temp_metrics AS SELECT * FROM new_df")
+                
+                # Insert data with conflict handling
+                con.execute("""
+                    INSERT INTO reviewer_metrics 
+                    SELECT * FROM temp_metrics
+                    WHERE "MS Number" NOT IN (SELECT "MS Number" FROM reviewer_metrics)
+                """)
+                
+                # Clean up temporary table
+                con.execute("DROP TABLE IF EXISTS temp_metrics")
+            
+            print(f"Appended {len(new_df)} new rows")
+            return new_df
+        except Exception as e:
+            print(f"Error inserting data: {e}")
+            return None
     else:
         print("No new rows to append.")
-        return existing_df
+        return fetch_data()
+
 def main():
+    
     combined_df = format_data()
+    
     if combined_df is not None:
+        combined_df.to_csv('combined_df2.csv', index=False)
         print("Data successfully combined and saved.")
     else:
         print("No changes made to the data.")
 
-main()
+if __name__ == "__main__":
+    main()
