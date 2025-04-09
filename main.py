@@ -2,55 +2,129 @@ import re
 import os
 import pandas as pd
 from datetime import datetime
+from dotenv import load_dotenv
+from supabase import create_client
 
+# Load environment variables
+load_dotenv()
 
 def get_local_data():
-    folder_path = '../Dealt With/'
-    pattern = r'([A-Za-z]+)-D-(\d{2}-\d{5})(R\d+)\s\((.*?)\)\s(\d{4})-(\d{2})-(\d{2})\.pdf'
-    files = os.listdir(folder_path)
-    file_data = []
+    # Initialize Supabase client
+    supabase = create_client(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_KEY")
+    )
+
+    # Query the data from Supabase
+    result = supabase.table('reviewer_metrics').select(
+        'Name',
+        'MS_Number',
+        'Version',
+        'Year',
+        'Editor',
+        'Journal'
+    ).execute()
+
+    df = pd.DataFrame(result.data)
+
+    # Read existing data from CSV
     existing_df = pd.read_csv('reviewer_metrics.csv')
-    existing_ms_numbers = existing_df['MS Number'].tolist()  # Extract existing MS Numbers to avoid duplicates
-    # Loop through the files and check for new rows
-    for file_name in files:
-        file_path = os.path.join(folder_path, file_name)
-        if os.path.isfile(file_path):  # Check if it's a file, not a directory
-            match = re.search(pattern, file_name)
-            if match:
-                journal = match.group(1)  # EUONCO
-                ms_number = f"{journal}-D-{match.group(2)}{match.group(3)}"  # EUONCO-D-24-00622R2
-                version = match.group(3)  # R2
-                editor = match.group(4)   # Assel
-                year = int(match.group(5)) # 2024
-                file_info = {
-                    'Name': file_name,
-                    'MS Number': ms_number,
-                    'Version': version,
-                    'Year': year,
-                    'Editor': editor,
-                    'Journal': journal
-                }
-                if ms_number not in existing_ms_numbers:
-                    file_data.append(file_info)
-    # If there is any new data, create a DataFrame and append it to the CSV
-    if file_data:
-        new_df = pd.DataFrame(file_data)
-        new_df['Date Invited'] = None
-        new_df['Date Completed'] = None
-        new_df = new_df.sort_values(by='Year', ascending=False)
-        combined_df = pd.concat([new_df, existing_df], ignore_index=True)
-        # Write the combined DataFrame back to the CSV (overwrite entire file)
+    # Rename MS Number to MS_Number for consistency
+    existing_df = existing_df.rename(columns={'MS Number': 'MS_Number'})
+    existing_ms_numbers = existing_df['MS_Number'].tolist()
+
+    # Filter for new rows
+    new_rows = df[~df['MS_Number'].isin(existing_ms_numbers)]
+
+    if not new_rows.empty:
+        # Prepare new rows for CSV
+        new_rows = new_rows.rename(columns={
+            'MS_Number': 'MS Number',
+            'Date_Invited': 'Date Invited',
+            'Date_Completed': 'Date Completed'
+        })
+        new_rows = new_rows.sort_values(by='Year', ascending=False)
+
+        # Combine with existing data
+        combined_df = pd.concat([new_rows, existing_df], ignore_index=True)
         combined_df.to_csv('reviewer_metrics.csv', index=False)
-        print(f"Appended {len(new_df)} new rows")
+        print(f"Appended {len(new_rows)} new rows")
     else:
         print("No new rows to append.")
+        combined_df = existing_df
+
+    # Ensure consistent column names before returning
+    combined_df = combined_df.rename(columns={'MS Number': 'MS_Number'})
+
+    # Print DataFrame structure for debugging
+    print("\nDataFrame Structure:")
+    print(f"Columns: {combined_df.columns.tolist()}")
+    print(f"Shape: {combined_df.shape}")
 
     return combined_df
 
-def save_to_db():
-    print()
+def save_to_db(df):
+    try:
+        # Initialize Supabase client
+        supabase = create_client(
+            os.getenv("SUPABASE_URL"),
+            os.getenv("SUPABASE_KEY")
+        )
+
+        print("\nDataFrame Structure:")
+        print(f"Columns: {df.columns.tolist()}")
+        print(f"Shape: {df.shape}")
+
+        try:
+            # Rename columns to match Supabase if needed
+            column_mapping = {
+                'Date Invited': 'Date_Invited',
+                'Date Completed': 'Date_Completed'
+            }
+            records_df = df.copy()
+            records_df = records_df.rename(columns=column_mapping)
+
+            # Remove duplicates, keeping the last occurrence
+            print(f"Checking for duplicates in MS_Number...")
+            duplicates = records_df[records_df.duplicated('MS_Number', keep=False)]
+            if not duplicates.empty:
+                print(f"Found {len(duplicates)} duplicate entries")
+                print("Sample of duplicates:")
+                print(duplicates[['MS_Number', 'Name']].head())
+
+            records_df = records_df.drop_duplicates('MS_Number', keep='last')
+            print(f"Shape after removing duplicates: {records_df.shape}")
+
+            # Replace NaN values with None
+            records_df = records_df.replace({pd.NA: None})
+            records_df = records_df.where(pd.notnull(records_df), None)
+
+            # Convert to records and ensure no NaN values
+            records = records_df.to_dict('records')
+
+            # Use upsert instead of insert to handle duplicates
+            response = supabase.table('reviewer_metrics_prod').upsert(records).execute()
+            print(f"Successfully processed {len(records)} records in Supabase.")
+
+            # Verify the total number of records
+            result = supabase.table('reviewer_metrics_prod').select("*").execute()
+            print(f"Total records in Supabase: {len(result.data)}")
+
+        except Exception as e:
+            print(f"Error saving to Supabase: {str(e)}")
+            print("Full error details:")
+            import traceback
+            print(traceback.format_exc())
+
+    except Exception as e:
+        print(f"Error connecting to Supabase: {str(e)}")
+        print("Full error details:")
+        import traceback
+        print(traceback.format_exc())
 
 def main():
-    get_local_data()
+    df = get_local_data()
+    save_to_db(df)
 
-main()
+if __name__ == "__main__":
+    main()

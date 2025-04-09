@@ -5,3 +5,10 @@ reviewer-analysis/
 submissions/
 *.csv
 __pycache__/
+*.duckdb
+*.duckdb.wal
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.env.local
