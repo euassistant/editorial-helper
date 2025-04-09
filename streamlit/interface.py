@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from main import format_data
+from streamlit.database_attempt.main import format_data
 
 
 # Page setup
@@ -13,12 +13,12 @@ tab1, tab2, tab3 = st.tabs(["Search", "Edit Data", "Analytics"])
 # Use a text_input to get the keywords to filter the dataframe
 with tab1:
     st.header("Search")
-    
+
     # Add a refresh button
     if st.button('🔄 Refresh Data'):
         st.cache_data.clear()
         st.rerun()
-        
+
     text_search = st.text_input("Search by Manuscript Name, MS Number, or Editor", value="")
 
     @st.cache_data(ttl=60)  # Cache for 60 seconds only
@@ -37,7 +37,7 @@ with tab1:
             return pd.DataFrame()  # Return empty DataFrame if no data
 
     df = load_df()
-    
+
     if text_search:
         m1 = df["MS Number"].str.contains(text_search, case=False, na=False)
         m2 = df["Name"].str.contains(text_search, case=False, na=False)
