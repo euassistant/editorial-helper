@@ -58,8 +58,23 @@ with tab1:
             # Convert to DataFrame
             df = pd.DataFrame(response.data)
 
-            # Convert Year to integer
-            df['Year'] = df['Year'].astype(int)
+            # Clean Year column before conversion
+            def clean_year(year):
+                try:
+                    if pd.isna(year):
+                        return None
+                    if isinstance(year, str):
+                        # Look for 4-digit year
+                        import re
+                        match = re.search(r'\d{4}', year)
+                        if match:
+                            return int(match.group(0))
+                    return int(year) if pd.notnull(year) else None
+                except:
+                    return None
+
+            # Apply cleaning function to Year column
+            df['Year'] = df['Year'].apply(clean_year)
 
             # Convert date strings to datetime objects
             df['Date_Invited'] = pd.to_datetime(df['Date_Invited']).dt.date

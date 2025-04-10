@@ -15,7 +15,10 @@ def get_local_data():
         os.getenv("SUPABASE_KEY")
     )
 
-    # Query the data from Supabase
+    print("\n=== Starting Data Import Process ===")
+
+    # Query the data from Supabase reviewer_metrics table
+    print("\nQuerying reviewer_metrics table...")
     result = supabase.table('reviewer_metrics').select(
         'Name',
         'MS_Number',
@@ -25,60 +28,105 @@ def get_local_data():
         'Journal'
     ).execute()
 
-    df = pd.DataFrame(result.data)
+    print(f"Found {len(result.data)} records in reviewer_metrics")
 
-    # Read existing data from CSV
-    try:
-        existing_df = pd.read_csv('reviewer_metrics.csv')
-        # Rename MS Number to MS_Number for consistency
-        existing_df = existing_df.rename(columns={'MS Number': 'MS_Number'})
-        existing_ms_numbers = existing_df['MS_Number'].values.tolist()
-    except FileNotFoundError:
-        # If file doesn't exist, create empty DataFrame with same columns
-        existing_df = pd.DataFrame(columns=df.columns)
-        existing_ms_numbers = []
+    # Get existing data from reviewer_metrics_prod table
+    print("\nQuerying reviewer_metrics_prod table...")
+    existing_result = supabase.table('reviewer_metrics_prod').select(
+        'MS_Number'
+    ).execute()
+
+    print(f"Found {len(existing_result.data)} records in reviewer_metrics_prod")
+
+    # Convert to DataFrames
+    df = pd.DataFrame(result.data)
+    existing_df = pd.DataFrame(existing_result.data)
+
+    print("\nDataFrame shapes:")
+    print(f"Source DataFrame shape: {df.shape}")
+    print(f"Existing DataFrame shape: {existing_df.shape}")
+
+    # Get list of existing MS_Numbers
+    existing_ms_numbers = existing_df['MS_Number'].values.tolist()
+    print(f"\nNumber of existing MS_Numbers: {len(existing_ms_numbers)}")
 
     # Filter for new rows
     new_rows = df[~df['MS_Number'].isin(existing_ms_numbers)]
+    print(f"\nFound {len(new_rows)} new records to import")
 
     if not new_rows.empty:
-        # Prepare new rows for CSV
-        new_rows = new_rows.copy()  # Create a copy to avoid SettingWithCopyWarning
+        print("\nSample of new records:")
+        print(new_rows[['MS_Number', 'Name', 'Year']].head())
 
-        # Ensure both DataFrames have the same columns
-        common_columns = list(set(new_rows.columns) & set(existing_df.columns))
-        new_rows = new_rows[common_columns]
-        existing_df = existing_df[common_columns]
+        # Clean up the new rows
+        new_rows = new_rows.copy()
 
-        # Reset indices for both DataFrames
-        new_rows = new_rows.reset_index(drop=True)
-        existing_df = existing_df.reset_index(drop=True)
+        # Remove duplicate columns
+        new_rows = new_rows.loc[:, ~new_rows.columns.duplicated()]
 
-        # Rename columns consistently
-        column_mapping = {
-            'MS_Number': 'MS Number',
-            'Date_Invited': 'Date Invited',
-            'Date_Completed': 'Date Completed'
-        }
-        new_rows = new_rows.rename(columns=column_mapping)
-        existing_df = existing_df.rename(columns=column_mapping)
+        # Remove rows with null MS_Number
+        new_rows = new_rows.dropna(subset=['MS_Number'])
+        print(f"After removing null MS_Number: {len(new_rows)} records")
 
-        # Sort new rows
-        new_rows = new_rows.sort_values(by='Year', ascending=False)
+        # Remove duplicates based on MS_Number
+        new_rows = new_rows.drop_duplicates(subset=['MS_Number'], keep='last')
+        print(f"After removing duplicates: {len(new_rows)} records")
 
-        # Combine with existing data
-        combined_df = pd.concat([new_rows, existing_df], ignore_index=True, verify_integrity=True)
-        combined_df.to_csv('reviewer_metrics.csv', index=False)
-        print(f"Appended {len(new_rows)} new rows")
+        # Clean Year column
+        def clean_year(year):
+            try:
+                if pd.isna(year):
+                    return None
+                if isinstance(year, str):
+                    # Look for 4-digit year
+                    import re
+                    match = re.search(r'\d{4}', year)
+                    if match:
+                        return int(match.group(0))
+                return int(year) if pd.notnull(year) else None
+            except:
+                return None
+
+        new_rows['Year'] = new_rows['Year'].apply(clean_year)
+
+        # Convert to records and ensure no NaN values
+        new_rows = new_rows.replace({pd.NA: None})
+        new_rows = new_rows.where(pd.notnull(new_rows), None)
+
+        # Convert to records
+        records = new_rows.to_dict('records')
+        print(f"\nPrepared {len(records)} records for import")
+
+        # Insert new records into reviewer_metrics_prod
+        try:
+            print("\nAttempting to import records...")
+            response = supabase.table('reviewer_metrics_prod').upsert(records).execute()
+            print(f"Successfully imported {len(records)} new records to reviewer_metrics_prod")
+
+            # Verify the import
+            verify_result = supabase.table('reviewer_metrics_prod').select("*").execute()
+            print(f"\nVerification - Total records in reviewer_metrics_prod: {len(verify_result.data)}")
+
+            # Check if our new records are present
+            imported_ms_numbers = [record['MS_Number'] for record in records]
+            verify_df = pd.DataFrame(verify_result.data)
+            found_count = verify_df[verify_df['MS_Number'].isin(imported_ms_numbers)].shape[0]
+            print(f"Found {found_count} of {len(imported_ms_numbers)} imported records in the database")
+
+        except Exception as e:
+            print(f"Error importing records: {str(e)}")
+            print("Full error details:")
+            import traceback
+            print(traceback.format_exc())
     else:
-        print("No new rows to append.")
-        combined_df = existing_df
+        print("No new records to import")
 
-    # Ensure consistent column names before returning
-    combined_df = combined_df.rename(columns={'MS Number': 'MS_Number'})
+    # Get the updated data from reviewer_metrics_prod
+    updated_result = supabase.table('reviewer_metrics_prod').select("*").execute()
+    combined_df = pd.DataFrame(updated_result.data)
 
     # Print DataFrame structure for debugging
-    print("\nDataFrame Structure:")
+    print("\nFinal DataFrame Structure:")
     print(f"Columns: {combined_df.columns.tolist()}")
     print(f"Shape: {combined_df.shape}")
 
@@ -97,35 +145,42 @@ def save_to_db(df):
         print(f"Shape: {df.shape}")
 
         try:
-            # Rename columns to match Supabase if needed
-            column_mapping = {
-                'Date Invited': 'Date_Invited',
-                'Date Completed': 'Date_Completed'
-            }
-            records_df = df.copy()
-            records_df = records_df.rename(columns=column_mapping)
+            # Clean up the DataFrame before saving
+            # Remove duplicate columns
+            records_df = df.loc[:, ~df.columns.duplicated()]
 
-            # Remove duplicates, keeping the last occurrence
-            print(f"Checking for duplicates in MS_Number...")
-            duplicates = records_df[records_df.duplicated('MS_Number', keep=False)]
-            if not duplicates.empty:
-                print(f"Found {len(duplicates)} duplicate entries")
-                print("Sample of duplicates:")
-                print(duplicates[['MS_Number', 'Name']].head())
+            # Remove rows with null MS_Number
+            records_df = records_df.dropna(subset=['MS_Number'])
 
-            records_df = records_df.drop_duplicates('MS_Number', keep='last')
-            print(f"Shape after removing duplicates: {records_df.shape}")
-
-            # Replace NaN values with None
+            # Convert to records and ensure no NaN values
             records_df = records_df.replace({pd.NA: None})
             records_df = records_df.where(pd.notnull(records_df), None)
 
-            # Convert to records and ensure no NaN values
-            records = records_df.to_dict('records')
+            # Get unique MS_Number values
+            unique_ms_numbers = records_df['MS_Number'].unique()
+            print(f"Found {len(unique_ms_numbers)} unique MS_Number values")
 
-            # Use upsert instead of insert to handle duplicates
-            response = supabase.table('reviewer_metrics_prod').upsert(records).execute()
-            print(f"Successfully processed {len(records)} records in Supabase.")
+            # Process records one by one to avoid duplicate constraint errors
+            total_processed = 0
+            total_errors = 0
+
+            for ms_number in unique_ms_numbers:
+                # Get the most recent record for this MS_Number
+                record = records_df[records_df['MS_Number'] == ms_number].iloc[-1].to_dict()
+
+                try:
+                    response = supabase.table('reviewer_metrics_prod').upsert([record]).execute()
+                    total_processed += 1
+                    if total_processed % 100 == 0:
+                        print(f"Processed {total_processed} records")
+                except Exception as e:
+                    print(f"Error processing MS_Number {ms_number}: {str(e)}")
+                    total_errors += 1
+
+            print(f"\nProcessing Summary:")
+            print(f"Total records attempted: {len(unique_ms_numbers)}")
+            print(f"Successfully processed: {total_processed}")
+            print(f"Errors encountered: {total_errors}")
 
             # Verify the total number of records
             result = supabase.table('reviewer_metrics_prod').select("*").execute()
