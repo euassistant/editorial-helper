@@ -28,25 +28,46 @@ def get_local_data():
     df = pd.DataFrame(result.data)
 
     # Read existing data from CSV
-    existing_df = pd.read_csv('reviewer_metrics.csv')
-    # Rename MS Number to MS_Number for consistency
-    existing_df = existing_df.rename(columns={'MS Number': 'MS_Number'})
-    existing_ms_numbers = existing_df['MS_Number'].tolist()
+    try:
+        existing_df = pd.read_csv('reviewer_metrics.csv')
+        # Rename MS Number to MS_Number for consistency
+        existing_df = existing_df.rename(columns={'MS Number': 'MS_Number'})
+        existing_ms_numbers = existing_df['MS_Number'].values.tolist()
+    except FileNotFoundError:
+        # If file doesn't exist, create empty DataFrame with same columns
+        existing_df = pd.DataFrame(columns=df.columns)
+        existing_ms_numbers = []
 
     # Filter for new rows
     new_rows = df[~df['MS_Number'].isin(existing_ms_numbers)]
 
     if not new_rows.empty:
         # Prepare new rows for CSV
-        new_rows = new_rows.rename(columns={
+        new_rows = new_rows.copy()  # Create a copy to avoid SettingWithCopyWarning
+
+        # Ensure both DataFrames have the same columns
+        common_columns = list(set(new_rows.columns) & set(existing_df.columns))
+        new_rows = new_rows[common_columns]
+        existing_df = existing_df[common_columns]
+
+        # Reset indices for both DataFrames
+        new_rows = new_rows.reset_index(drop=True)
+        existing_df = existing_df.reset_index(drop=True)
+
+        # Rename columns consistently
+        column_mapping = {
             'MS_Number': 'MS Number',
             'Date_Invited': 'Date Invited',
             'Date_Completed': 'Date Completed'
-        })
+        }
+        new_rows = new_rows.rename(columns=column_mapping)
+        existing_df = existing_df.rename(columns=column_mapping)
+
+        # Sort new rows
         new_rows = new_rows.sort_values(by='Year', ascending=False)
 
         # Combine with existing data
-        combined_df = pd.concat([new_rows, existing_df], ignore_index=True)
+        combined_df = pd.concat([new_rows, existing_df], ignore_index=True, verify_integrity=True)
         combined_df.to_csv('reviewer_metrics.csv', index=False)
         print(f"Appended {len(new_rows)} new rows")
     else:
