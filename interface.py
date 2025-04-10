@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from supabase import create_client
 import os
 import subprocess
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -21,10 +22,19 @@ with tab1:
     # Add a refresh button
     if st.button('🔄 Refresh Data'):
         try:
-            # Execute main.py
-            result = subprocess.run(['python', 'main.py'], capture_output=True, text=True)
+            # Get the absolute path to main.py
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            main_script = os.path.join(current_dir, 'main.py')
+
+            # Execute main.py using the same Python interpreter
+            python_executable = sys.executable
+            result = subprocess.run([python_executable, main_script], capture_output=True, text=True)
+
             if result.returncode == 0:
                 st.success("Data refreshed successfully!")
+                if result.stdout:
+                    st.text("Output:")
+                    st.text(result.stdout)
             else:
                 st.error(f"Error refreshing data: {result.stderr}")
         except Exception as e:
