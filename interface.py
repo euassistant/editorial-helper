@@ -4,6 +4,7 @@ import duckdb
 from dotenv import load_dotenv
 from supabase import create_client
 import os
+import subprocess
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +20,16 @@ with tab1:
 
     # Add a refresh button
     if st.button('🔄 Refresh Data'):
+        try:
+            # Execute main.py
+            result = subprocess.run(['python', 'main.py'], capture_output=True, text=True)
+            if result.returncode == 0:
+                st.success("Data refreshed successfully!")
+            else:
+                st.error(f"Error refreshing data: {result.stderr}")
+        except Exception as e:
+            st.error(f"Error executing main.py: {str(e)}")
+
         st.cache_data.clear()
         st.rerun()
 
