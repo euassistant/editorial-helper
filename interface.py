@@ -143,6 +143,7 @@ with tab2:
             step=1
         )
     }
+
     edf = st.data_editor(df, column_config=column_config)
     if st.button('Save'):
         try:
