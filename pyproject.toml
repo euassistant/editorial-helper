@@ -1,0 +1,12 @@
+[project]
+name = "editorial-helper"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "datetime>=5.5",
+    "dotenv>=0.9.9",
+    "pandas>=2.2.3",
+    "supabase>=2.15.0",
+]

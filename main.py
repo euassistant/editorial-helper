@@ -40,14 +40,21 @@ def get_local_data():
 
     # Convert to DataFrames
     df = pd.DataFrame(result.data)
-    existing_df = pd.DataFrame(existing_result.data)
+    print(f"df columns: {df.columns.tolist()}")
+    try:
+        existing_df = pd.DataFrame(existing_result.data)
+        print(f"existing_df columns: {existing_df.columns.tolist()}")
+        if 'MS_Number' not in existing_df.columns:
+            print("Error: 'MS_Number' column not found in existing_df. Available columns:", existing_df.columns.tolist())
+            existing_ms_numbers = []
+        else:
+            existing_ms_numbers = existing_df['MS_Number'].values.tolist()
+    except Exception as e:
+        print(f"Error converting existing_result.data to DataFrame: {e}")
+        existing_ms_numbers = []
 
-    print("\nDataFrame shapes:")
-    print(f"Source DataFrame shape: {df.shape}")
-    print(f"Existing DataFrame shape: {existing_df.shape}")
 
     # Get list of existing MS_Numbers
-    existing_ms_numbers = existing_df['MS_Number'].values.tolist()
     print(f"\nNumber of existing MS_Numbers: {len(existing_ms_numbers)}")
 
     # Filter for new rows
@@ -125,11 +132,6 @@ def get_local_data():
     updated_result = supabase.table('reviewer_metrics_prod').select("*").execute()
     combined_df = pd.DataFrame(updated_result.data)
 
-    # Print DataFrame structure for debugging
-    print("\nFinal DataFrame Structure:")
-    print(f"Columns: {combined_df.columns.tolist()}")
-    print(f"Shape: {combined_df.shape}")
-
     return combined_df
 
 def save_to_db(df):
@@ -140,9 +142,7 @@ def save_to_db(df):
             os.getenv("SUPABASE_KEY")
         )
 
-        print("\nDataFrame Structure:")
-        print(f"Columns: {df.columns.tolist()}")
-        print(f"Shape: {df.shape}")
+      
 
         try:
             # Clean up the DataFrame before saving
@@ -176,11 +176,6 @@ def save_to_db(df):
                 except Exception as e:
                     print(f"Error processing MS_Number {ms_number}: {str(e)}")
                     total_errors += 1
-
-            print(f"\nProcessing Summary:")
-            print(f"Total records attempted: {len(unique_ms_numbers)}")
-            print(f"Successfully processed: {total_processed}")
-            print(f"Errors encountered: {total_errors}")
 
             # Verify the total number of records
             result = supabase.table('reviewer_metrics_prod').select("*").execute()
